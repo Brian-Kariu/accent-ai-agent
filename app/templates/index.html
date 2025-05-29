@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Accent Detection</title>
+    <link href="{{ url_for('static', path='/styles.css') }}" rel="stylesheet">
+    <style>
+        body { font-family: sans-serif; }
+    </style>
+</head>
+<body>
+    <h1>Accent Detection from URL</h1>
+    <div>
+        <form action="/api/v1/accent/detect_accent" method="post">
+            <label for="url">Enter Public Video/Audio URL:</label>
+            <input type="text" id="url" name="url" size="80">
+            <button type="submit">Detect Accent</button>
+        </form>
+    </div>
+    <div id="result" style="display:none;">
+        <h2>Detection Result:</h2>
+        <pre id="result-json"></pre>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.querySelector('form');
+            const resultDiv = document.getElementById('result');
+            const resultJsonPre = document.getElementById('result-json');
+
+            form.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const formData = new FormData(form);
+                const url = formData.get('url');
+
+                if (!url) {
+                    alert("Please enter a URL.");
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/v1/accent/detect_accent', {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        resultJsonPre.textContent = JSON.stringify(errorData, null, 2);
+                        resultDiv.style.display = 'block';
+                        return;
+                    }
+
+                    const data = await response.json();
+                    resultJsonPre.textContent = JSON.stringify(data, null, 2);
+                    resultDiv.style.display = 'block';
+                } catch (error) {
+                    resultJsonPre.textContent = JSON.stringify({ error: error.message }, null, 2);
+                    resultDiv.style.display = 'block';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

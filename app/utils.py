@@ -1,18 +1,17 @@
+import asyncio
 import os
 
-import ffmpeg
 import torch
 import torchaudio
 import yt_dlp as youtube_dl
-from flask import Flask, jsonify, render_template, request
-from speechbrain.pretrained import EncoderClassifier
+from speechbrain.inference import EncoderClassifier
 
-app = Flask(__name__)
-app.config["UPLOAD_FOLDER"] = "uploads"
-os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
+MAX_AUDIO_SIZE = 10 * 1024 * 1024  # 10 MB
 
 # Load the pretrained ECAPA-TDNN model for accent identification (load once)
 try:
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     accent_identifier = EncoderClassifier.from_hparams(
         source="Jzuluaga/accent-id-commonaccent_ecapa",
         savedir="pretrained_models/accent-id-commonaccent_ecapa",
@@ -22,60 +21,88 @@ except Exception as e:
     accent_identifier = None
 
 
-def download_audio(url, output_path):
-    """Downloads audio from a public URL."""
+async def download_audio(url, output_path):
+    """Downloads audio from a public URL asynchronously."""
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": output_path,
     }
     try:
-        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None, lambda: youtube_dl.YoutubeDL(ydl_opts).download([url])
+        )
         return output_path
     except Exception as e:
         return f"Error downloading audio from URL: {e}"
 
 
-def convert_to_audio(video_path, audio_output_path="audio.wav"):
-    """Converts a video file to an audio file using ffmpeg-python."""
+async def convert_to_audio(video_path, audio_output_path="audio.wav"):
+    """Converts a video file to an audio file using ffmpeg-python asynchronously."""
     try:
-        (
-            ffmpeg.input(video_path)
-            .output(audio_output_path, acodec="pcm_s16le", ac=1, ar=16000)
-            .run(capture_stdout=True, capture_stderr=True)
+        process = await asyncio.create_subprocess_exec(
+            "ffmpeg",
+            "-i",
+            video_path,
+            "-acodec",
+            "pcm_s16le",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            audio_output_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
+        stdout, stderr = await process.communicate()
+        if process.returncode != 0:
+            return f"FFmpeg error: {stderr.decode('utf8')}"
         return audio_output_path
-    except ffmpeg.Error as e:
-        return f"FFmpeg error: {e.stderr.decode('utf8')}"
+    except Exception as e:
+        return f"Error during FFmpeg conversion: {e}"
 
 
-def process_url_for_audio(url, output_dir):
-    """Downloads and converts audio from a public URL."""
-    video_output_path = os.path.join(output_dir, "temp_video.%(ext)s")
+async def process_url_for_audio(url, output_dir):
+    """Downloads and converts audio, checks size, and uploads to Google Drive."""
+    video_output_path_base = os.path.join(output_dir, "temp_video")
     audio_output_path = os.path.join(output_dir, "audio.wav")
 
     try:
         ydl_opts = {
             "format": "bestaudio/best",
-            "outtmpl": video_output_path,
+            "outtmpl": video_output_path_base,
         }
-        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
-            if info_dict and "entries" in info_dict:
-                # Handle playlists or multiple videos
-                entry = info_dict["entries"][0]
-                video_file_path = ydl.prepare_filename(entry)
-            else:
-                video_file_path = ydl.prepare_filename(info_dict)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None, lambda: youtube_dl.YoutubeDL(ydl_opts).download([url])
+        )
 
-            convert_to_audio(video_file_path, audio_output_path)
-            os.remove(video_file_path)  # Clean up the video file
-            return audio_output_path
+        import glob
+
+        video_files = glob.glob(f"{video_output_path_base}*")
+        if not video_files:
+            return "Error: Could not find downloaded video file."
+        video_file_path = video_files[0]
+
+        audio_file_path = await convert_to_audio(video_file_path, audio_output_path)
+        if "Error" in audio_file_path:
+            os.remove(video_file_path)
+            return audio_file_path
+
+        # Check audio file size
+        audio_file_size = os.path.getsize(audio_file_path)
+        if audio_file_size > MAX_AUDIO_SIZE:
+            os.remove(video_file_path)
+            os.remove(audio_file_path)
+            return f"Error: Processed audio file size exceeds the limit of {MAX_AUDIO_SIZE / (1024 * 1024):.1f} MB."
+
+        os.remove(video_file_path)
+        return audio_file_path
     except Exception as e:
         return f"Error processing URL for audio: {e}"
 
 
-def predict_accent(audio_path):
+async def predict_accent(audio_path):
     """Predicts the accent from an audio file."""
     if accent_identifier is None:
         return {"error": "Accent identification model not loaded."}
@@ -105,30 +132,3 @@ def predict_accent(audio_path):
     finally:
         if os.path.exists(audio_path):
             os.remove(audio_path)
-
-
-@app.route("/", methods=["GET"])
-def index():
-    return render_template("index.html")
-
-
-@app.route("/api/detect_accent", methods=["POST"])
-def detect_accent_api():
-    data = request.get_json()
-    if not data or "url" not in data:
-        return jsonify({"error": "Missing 'url' in request."}), 400
-
-    url = data["url"]
-    output_dir = app.config["UPLOAD_FOLDER"]
-    audio_path_or_error = process_url_for_audio(url, output_dir)
-
-    if isinstance(audio_path_or_error, str) and "Error" in audio_path_or_error:
-        return jsonify({"error": audio_path_or_error}), 500
-
-    audio_path = audio_path_or_error
-    prediction_result = predict_accent(audio_path)
-    return jsonify(prediction_result)
-
-
-if __name__ == "__main__":
-    app.run(debug=True)
