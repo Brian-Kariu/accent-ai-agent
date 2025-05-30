@@ -4,11 +4,9 @@
 
 This project implements an accent detection system that takes a public URL (of a video or audio file) as input, extracts the audio, and then uses a pre-trained deep learning model to identify the speaker's accent. The system provides the detected accent and a confidence score as a JSON output. It also features a simple web interface built with FastAPI and Jinja2 for users to interact with the system. You can view the app [here](https://accent-ai-agent.onrender.com).
 
-<p align="center">
-<video src="https://github.com/Brian-Kariu/accent-ai-agent/app/static/images/demo.mp4"></video>
-</p>
+https://github.com/user-attachments/assets/ede22f4e-97f7-460f-b380-de883b04dab3
 
-> Please note this project is meant to be a POC of the capabilities of accent detection and as such we it is not recommended to deploy this in a production setting.
+> Please note this project is meant to be a POC of the capabilities of accent detection and as such it is not recommended to deploy this in a production setting.
 
 ## Approach
 
@@ -75,8 +73,6 @@ You can also directly use the API endpoint:
     }
     ```
     or an error message in case of failure.
-
-![Screenshot of homepage](./app/static/images/homepage.png)
 
 ## Pros and Cons of Our Approach
 
