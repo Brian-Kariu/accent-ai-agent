@@ -8,6 +8,7 @@ from speechbrain.inference import EncoderClassifier
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
 MAX_AUDIO_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_VIDEO_DURATION = 300  # 5 minutes in seconds
 
 # Load the pretrained ECAPA-TDNN model for accent identification (load once)
 try:
@@ -62,6 +63,13 @@ async def convert_to_audio(video_path, audio_output_path="audio.wav"):
         return f"Error during FFmpeg conversion: {e}"
 
 
+def shorter_than_max_duration(info_dict):
+    """yt-dlp match_filter function to limit video duration."""
+    duration = info_dict.get("duration")
+    if duration is not None and duration > MAX_VIDEO_DURATION:
+        return f"Video exceeds maximum duration of {MAX_VIDEO_DURATION // 60} minutes."
+
+
 async def process_url_for_audio(url, output_dir):
     """Downloads and converts audio, checks size, and uploads to Google Drive."""
     audio_output_path = os.path.join(output_dir, "audio.wav")
@@ -72,6 +80,7 @@ async def process_url_for_audio(url, output_dir):
         "extractaudio": True,
         "audioformat": "wav",
         "noplaylist": True,  # Prevent downloading entire playlists if a single video URL is given
+        "match_filter": shorter_than_max_duration,
     }
     try:
         loop = asyncio.get_running_loop()
