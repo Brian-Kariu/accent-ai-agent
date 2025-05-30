@@ -7,7 +7,7 @@ import yt_dlp as youtube_dl
 from speechbrain.inference import EncoderClassifier
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
-MAX_AUDIO_SIZE = 20 * 1024 * 1024  # 10 MB
+MAX_AUDIO_SIZE = 50 * 1024 * 1024  # 50 MB
 MAX_VIDEO_DURATION = 300  # 5 minutes in seconds
 
 # Load the pretrained ECAPA-TDNN model for accent identification (load once)
