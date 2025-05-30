@@ -177,3 +177,4 @@ pyrightconfig.json
 
 # App specific
 pretrained_models/
+*/uploads/*

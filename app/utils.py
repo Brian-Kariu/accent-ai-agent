@@ -64,40 +64,28 @@ async def convert_to_audio(video_path, audio_output_path="audio.wav"):
 
 async def process_url_for_audio(url, output_dir):
     """Downloads and converts audio, checks size, and uploads to Google Drive."""
-    video_output_path_base = os.path.join(output_dir, "temp_video")
     audio_output_path = os.path.join(output_dir, "audio.wav")
 
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "outtmpl": audio_output_path,
+        "extractaudio": True,
+        "audioformat": "wav",
+        "noplaylist": True,  # Prevent downloading entire playlists if a single video URL is given
+    }
     try:
-        ydl_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": video_output_path_base,
-        }
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             None, lambda: youtube_dl.YoutubeDL(ydl_opts).download([url])
         )
 
-        import glob
-
-        video_files = glob.glob(f"{video_output_path_base}*")
-        if not video_files:
-            return "Error: Could not find downloaded video file."
-        video_file_path = video_files[0]
-
-        audio_file_path = await convert_to_audio(video_file_path, audio_output_path)
-        if "Error" in audio_file_path:
-            os.remove(video_file_path)
-            return audio_file_path
-
         # Check audio file size
-        audio_file_size = os.path.getsize(audio_file_path)
+        audio_file_size = os.path.getsize(audio_output_path)
         if audio_file_size > MAX_AUDIO_SIZE:
-            os.remove(video_file_path)
-            os.remove(audio_file_path)
+            os.remove(audio_output_path)
             return f"Error: Processed audio file size exceeds the limit of {MAX_AUDIO_SIZE / (1024 * 1024):.1f} MB."
 
-        os.remove(video_file_path)
-        return audio_file_path
+        return audio_output_path
     except Exception as e:
         return f"Error processing URL for audio: {e}"
 
